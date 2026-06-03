@@ -1,6 +1,4 @@
 import numpy as np
-import os
-import cv2
 import matplotlib.pyplot as plt
 import time
 from thorlabs_tsi_sdk.tl_camera import TLCameraSDK, OPERATION_MODE
@@ -71,6 +69,9 @@ class Camera_CS126:
 
     def Set_exposute_time_us(self, exposure_time):
         self.Camera.exposure_time_us = exposure_time
+
+    def Set_gain(self, gain):
+        self.Camera.gain = gain
 
     def Arm(self):
         self.Camera.arm(2)

@@ -1,0 +1,22 @@
+[project]
+name = "holoeml-amp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "matplotlib>=3.10.9",
+    "numpy>=2.4.6",
+    "opencv-python>=4.13.0.92",
+    "pylablib>=1.4.5",
+    "pyqt5-qt5<=5.15.2",
+    "thorlabs-tsi-sdk",
+]
+
+[tool.uv.sources]
+thorlabs-tsi-sdk = { path = "thorcam-sdk/Python Toolkit/thorlabs_tsi_camera_python_sdk_package.zip" }
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.1",
+]
