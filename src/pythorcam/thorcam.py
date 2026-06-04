@@ -62,6 +62,7 @@ class ThorlabsCamera:
         self.cam_type = cam_type
         self.bit_depth = np.uint16
         self.out_bit_depth = np.float32
+        self.pixel_max_value: int = 4095  # CS126 is a 12-bit sensor stored in uint16
 
         available = sdk.discover_available_cameras()
         if not available:

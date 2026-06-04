@@ -1,0 +1,42 @@
+# Monochromator
+monochromator_port: COM4
+monochromator_grating_mode: VIS Grating
+wvl_start: 400.0
+wvl_stop: 1000.0
+wvl_num: 121
+filter_wvl: 600.0
+
+# Camera
+camera_serial: '35595'
+exposure_settings_path: 'src/config/exposure_settings.json'
+camera_black_level: 0
+camera_bit_depth: 'uint16'
+camera_out_bit_depth: 'float32'
+calib_target_brightness: 0.6
+calib_tolerance: 0.02
+calib_increment: 0.1
+calib_max_steps: 50
+calib_max_exposure_ms: 500
+calib_initial_exposure_ms: 300
+calib_initial_gain: 0
+calib_priority: 'exposure_time'
+calib_num_frames_to_average: 1
+calib_num_frames_to_drop: 0
+calib_delay: 0.0
+
+# z-translation motor
+focus_serial: '27271460'
+
+# Filterwheel
+filterwheel_address: 'USB0::0x104D::0x1011::7A01020F12162064::RAW'
+filterwheel_timeout: 2000
+black_pos: 4
+longpass_pos: 3
+filterwheel_empty_pos: 1
+
+# Measurements (reference, black, sample)
+save_dir: '.'
+num_frames_to_average: 5
+num_frames_to_drop: 1
+capture_delay: 0.0
+

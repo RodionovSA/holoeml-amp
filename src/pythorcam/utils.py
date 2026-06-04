@@ -148,6 +148,124 @@ def autofocus(camera_trans: ThorlabsCamera,
     return best_position, focus_curve, images
 
 
+def brightness_calibration(camera: ThorlabsCamera,
+                           initial_exposure_time: int,
+                           initial_gain: int,
+                           target_brightness: float,
+                           tolerance: float,
+                           increment: float,
+                           max_number_of_steps: int,
+                           max_exposure_time: int,
+                           priority: str = 'exposure_time',
+                           min_exposure_time: int = 28,
+                           min_gain: int = 0,
+                           max_gain: int = 480,
+                           num_frames_to_average: int = 1,
+                           num_frames_to_drop: int = 5,
+                           delay: float = 0) -> tuple[int, int]:
+    """Iteratively adjust exposure time and gain until mean brightness hits target.
+
+    One control is treated as primary (the `priority` knob): it is exhausted
+    before the secondary knob is touched.  On each step only one parameter
+    changes by the multiplicative factor ``(1 ± increment)``.
+
+    Parameters
+    ----------
+    camera : ThorlabsCamera
+    initial_exposure_time : int
+        Starting exposure in microseconds (µs).
+    initial_gain : int
+        Starting gain in SDK-defined units.
+    target_brightness : float
+        Desired mean brightness normalised to [0, 1] relative to
+        ``camera.pixel_max_value``.
+    tolerance : float
+        Stop once ``|normalised_mean - target| < tolerance``.
+    increment : float
+        Multiplicative step (e.g. 0.1 means ±10% per iteration).
+    max_number_of_steps : int
+        Bail out after this many iterations even if target not reached.
+    max_exposure_time : int
+        Upper limit for exposure in µs (user-defined ceiling).
+    priority : {'exposure_time', 'gain'}
+        Which control to exhaust first when brightness needs to increase.
+        The opposite control is used first when brightness needs to decrease.
+    min_exposure_time : int
+        Lower limit for exposure in µs. Defaults to CS126 hardware minimum (28).
+    min_gain, max_gain : int
+        Gain range in SDK-defined units. Defaults to CS126 range [0, 480].
+    num_frames_to_average, num_frames_to_drop : int
+        Forwarded to ``camera.get_image()``.
+    delay : float
+        Forwarded to ``camera.get_image()``.
+
+    Returns
+    -------
+    tuple[int, int]
+        Final ``(exposure_time_us, gain)`` after calibration.
+    """
+    if priority not in ('exposure_time', 'gain'):
+        raise ValueError("priority must be 'exposure_time' or 'gain'")
+
+    max_exposure_time = min(max_exposure_time, 14700924)
+
+    current_exposure = initial_exposure_time
+    current_gain = initial_gain
+    camera.set_exposure_time_us(current_exposure)
+    camera.set_gain(current_gain)
+
+    for _ in range(max_number_of_steps):
+        image = camera.get_image(num_frames_to_average=int(num_frames_to_average),
+                                 num_frames_to_drop=int(num_frames_to_drop),
+                                 delay=delay)
+        mean_brightness = image.mean() / camera.pixel_max_value
+
+        if abs(mean_brightness - target_brightness) < tolerance:
+            print(f'Target brightness reached: {mean_brightness:.2f}')
+            break
+
+        if mean_brightness < target_brightness:
+            # Need more brightness — use primary knob first, then secondary.
+            if priority == 'exposure_time':
+                if current_exposure < max_exposure_time:
+                    current_exposure = int(min(current_exposure * (1 + increment), max_exposure_time))
+                    camera.set_exposure_time_us(current_exposure)
+                elif current_gain < max_gain:
+                    current_gain = int(min(current_gain * (1 + increment), max_gain))
+                    if current_gain == 0:
+                        current_gain = 1
+                    camera.set_gain(current_gain)
+            else:  # priority == 'gain'
+                if current_gain < max_gain:
+                    current_gain = int(min(current_gain * (1 + increment), max_gain))
+                    if current_gain == 0:
+                        current_gain = 1
+                    camera.set_gain(current_gain)
+                elif current_exposure < max_exposure_time:
+                    current_exposure = int(min(current_exposure * (1 + increment), max_exposure_time))
+                    camera.set_exposure_time_us(current_exposure)
+        else:
+            # Need less brightness — use secondary knob first to recover primary headroom.
+            if priority == 'exposure_time':
+                if current_gain > min_gain:
+                    current_gain = int(max(current_gain * (1 - increment), min_gain))
+                    camera.set_gain(current_gain)
+                elif current_exposure > min_exposure_time:
+                    current_exposure = int(max(current_exposure * (1 - increment), min_exposure_time))
+                    camera.set_exposure_time_us(current_exposure)
+            else:  # priority == 'gain'
+                if current_exposure > min_exposure_time:
+                    current_exposure = int(max(current_exposure * (1 - increment), min_exposure_time))
+                    camera.set_exposure_time_us(current_exposure)
+                elif current_gain > min_gain:
+                    current_gain = int(max(current_gain * (1 - increment), min_gain))
+                    camera.set_gain(current_gain)
+
+        time.sleep(0.5)
+
+    return current_exposure, current_gain
+
+
 def autoexposure(camera: ThorlabsCamera,
                  initial_exposure_time: int,
                  target_brightness: float,
