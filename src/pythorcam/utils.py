@@ -268,7 +268,7 @@ def brightness_calibration(camera: ThorlabsCamera,
 
         time.sleep(0.5)
 
-    return current_exposure, current_gain, final_brightness
+    return current_exposure, current_gain, float(final_brightness)
 
 
 def autoexposure(camera: ThorlabsCamera,
