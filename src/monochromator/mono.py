@@ -118,7 +118,9 @@ class MonochromatorControl:
         """Drain the Arduino's boot banner and mark the device ready."""
         if not self._ready():
             return
-        time.sleep(0.1)  # give the boot banner time to arrive
+        # Arduino resets on serial open (DTR) and takes ~1-2 s to boot.
+        # Wait long enough for the boot banner to fully arrive before draining.
+        time.sleep(2.0)
         while self.ser.in_waiting > 0:
             line = self.ser.readline().decode(errors="replace").strip()
             if line:
