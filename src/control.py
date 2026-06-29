@@ -397,6 +397,7 @@ class Control:
         images = []
         try:
             for i in range(len(wavelengths)):
+                print(f"wavelength {wavelengths[i]}")
                 self.camera.set_exposure_time_us(int(es.exposure_ms[i] * 1000))
                 self.camera.set_gain(es.gain[i])
                 image = self.camera.get_image(

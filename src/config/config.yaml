@@ -10,20 +10,20 @@ monochromator_port: COM4                    # leave empty to be prompted at runt
 monochromator_grating_mode: VIS Grating    # VIS Grating | IR Grating | Switch Mode
 
 # ── Camera ────────────────────────────────────────────────────────────────────
-camera_serial: '29236'
+camera_serial: '35596'
 camera_black_level: 0
 camera_bit_depth: 'uint16'       # raw frame dtype
 camera_out_bit_depth: 'float32'  # output dtype after averaging
 
 # ── Focus motor ───────────────────────────────────────────────────────────────
-focus_serial: '27256388'
-default_focus_position: 7.8047  # mm (reference position at 550 nm)
+focus_serial: '27271402'
+default_focus_position: 17.6914  # mm (reference position at 550 nm)
 default_focus_max_velocity: 0.5  # mm/s
 default_focus_acceleration: 0.5  # mm/s²
 
 # ── Polarizer motor ───────────────────────────────────────────────────────────
 polarizer_serial: '55001180'
-polarizer_x_position: 45 # deg
+polarizer_x_position: 175 # deg
 default_polarizer_home_velocity: 10  # deg/s
 default_polarizer_max_velocity: 10  # deg/s
 default_polarizer_acceleration: 15  # deg/s²
@@ -48,7 +48,7 @@ calib_initial_gain: 0
 calib_num_frames_to_average: 1
 calib_num_frames_to_drop: 1
 calib_delay: 0.0                 # s — delay between captures
-calib_roi_fraction: null         # null = full frame; e.g. 0.5 = central 50%×50% of pixels
+calib_roi_fraction: 0.8         # null = full frame; e.g. 0.5 = central 50%×50% of pixels
 
 # ── Measurements ──────────────────────────────────────────────────────────────
 save_dir: '.'
