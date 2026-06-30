@@ -63,7 +63,8 @@ def live_view(camera: ThorlabsCamera,
 
 def calculate_focus_measure(image: np.ndarray) -> float:
     """Laplacian-variance focus metric. Higher = sharper."""
-    return cv2.Laplacian(image, cv2.CV_64F).var()
+    img = image[:, :, 0] if image.ndim == 3 else image
+    return cv2.Laplacian(img, cv2.CV_32F).var()
 
 
 def autofocus(camera_trans: ThorlabsCamera,
