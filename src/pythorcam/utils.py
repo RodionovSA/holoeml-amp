@@ -67,82 +67,96 @@ def calculate_focus_measure(image: np.ndarray) -> float:
 
 
 def autofocus(camera_trans: ThorlabsCamera,
-              camera_ref: ThorlabsCamera,
               focus_motor,
               start_position: float,
               end_position: float,
               step_size: float,
               velocity: float = 0.1,
+              camera_ref: ThorlabsCamera | None = None,
               num_frames_to_average: int = 1,
               num_frames_to_drop: int = 5,
               delay: float = 0) -> tuple[float, np.ndarray, np.ndarray]:
     """Sweep the focus motor and return the position with the sharpest image.
 
-    For each position the transmission image is divided by the reference image
-    before the focus metric is computed (cancels out illumination structure).
+    When *camera_ref* is provided the transmission image is divided by the
+    reference image before the focus metric is computed (cancels illumination
+    structure).  When *camera_ref* is ``None`` the metric is computed directly
+    on the transmission image.
 
     Parameters
     ----------
-    camera_trans, camera_ref : ThorlabsCamera
-        Sample-arm and reference-arm cameras.
-    focus_motor : Thorlabs.KinesisMotor (or wrapper)
-        Must expose `Move_to_position(position, velocity)` and `Get_position()`.
-        NOTE: these names don't match pylablib's KinesisMotor API
-        (`move_to` / `get_position`) — see CLAUDE.md, focus-motor wrapper TBD.
+    camera_trans : ThorlabsCamera
+        Sample-arm (or sole) camera.  Must already be armed.
+    focus_motor : pylablib KinesisMotor
+        Must expose ``setup_velocity``, ``move_to``, ``wait_move``, and
+        ``get_position`` (standard pylablib KinesisMotor API).
     start_position, end_position : float
-        Sweep range in motor units (mm for KDC101 + Z8 stage).
+        Sweep range in motor native units (metres for KinesisMotor with scale='stage').
     step_size : float
-        Step in motor units.
+        Step in motor native units.
     velocity : float
-        Motor velocity in motor units / s.
+        Motor velocity in motor native units / s.
+    camera_ref : ThorlabsCamera or None
+        Reference-arm camera.  When ``None``, normalization is skipped.
     num_frames_to_average, num_frames_to_drop : int
-        Forwarded to `camera.get_image()`.
+        Forwarded to ``camera.get_image()``.
     delay : float
-        Forwarded to `camera.get_image()`.
+        Forwarded to ``camera.get_image()``.
 
     Returns
     -------
     best_position : float
-        Motor position with the highest focus metric.
+        Motor position (motor native units) with the highest focus metric.
     focus_curve : np.ndarray, shape (2, steps)
         Row 0 is positions, row 1 is focus metric values.
     images : np.ndarray, shape (steps, H, W)
         Captured transmission images at each step (channel 0 only).
     """
-    best_focus = -1
+    best_focus = -1.0
     best_position = start_position
 
-    focus_motor.Move_to_position(float(start_position), float(0.1))
-    time.sleep(0.5)
-
-    steps = int((end_position - start_position) / step_size)
+    steps = int(round((end_position - start_position) / step_size))
     positions = np.linspace(start_position, end_position, steps)
 
-    focus_values = -np.ones([steps])
+    focus_values = -np.ones(steps)
     images = np.zeros([steps, camera_trans.image_height, camera_trans.image_width])
+
+    focus_motor.setup_velocity(max_velocity=velocity)
+    focus_motor.move_to(float(start_position))
+    focus_motor.wait_move()
+    time.sleep(0.5)
+
     for step in range(steps):
         image_trans = camera_trans.get_image(num_frames_to_average=int(num_frames_to_average),
                                              num_frames_to_drop=int(num_frames_to_drop),
                                              delay=delay)
-        image_ref = camera_ref.get_image(num_frames_to_average=int(num_frames_to_average),
-                                         num_frames_to_drop=int(num_frames_to_drop),
-                                         delay=delay)
 
-        current_focus = calculate_focus_measure(image_trans / image_ref) * 1000
+        if camera_ref is not None:
+            image_ref = camera_ref.get_image(num_frames_to_average=int(num_frames_to_average),
+                                             num_frames_to_drop=int(num_frames_to_drop),
+                                             delay=delay)
+            metric_image = image_trans / image_ref
+        else:
+            metric_image = image_trans
+
+        current_focus = calculate_focus_measure(metric_image) * 1000
         focus_values[step] = current_focus
         images[step, :, :] = image_trans[:, :, 0]
 
-        print('current_focus: ', current_focus)
+        print(f'step {step}/{steps}  position={focus_motor.get_position():.6f}  focus={current_focus:.3f}')
 
         if (current_focus > best_focus) and (step != 0):
             best_focus = current_focus
-            best_position = focus_motor.Get_position()
+            best_position = focus_motor.get_position()
 
-        focus_motor.Move_to_position(float(start_position + (step + 1) * step_size), float(velocity))
-        time.sleep(0.1)
+        if step < steps - 1:
+            focus_motor.move_to(float(positions[step + 1]))
+            focus_motor.wait_move()
 
     focus_curve = np.array([positions, focus_values])
-    focus_motor.Move_to_position(float(best_position), float(0.05))
+
+    focus_motor.move_to(float(best_position))
+    focus_motor.wait_move()
     time.sleep(0.5)
 
     return best_position, focus_curve, images

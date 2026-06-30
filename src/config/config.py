@@ -103,7 +103,9 @@ class Config:
     """Focus motor max velocity (mm/s). ``None`` skips."""
     default_focus_acceleration: float | None = None
     """Focus motor acceleration (mm/s²). ``None`` skips."""
-    
+    focus_use_current_position: bool = False
+    """When ``True``, use the motor's position at sweep start as the focus baseline instead of ``default_focus_position``.  All per-wavelength offsets are applied relative to that position."""
+
     # ── Polarizer motor ───────────────────────────────────────────────────────
     polarizer_serial: str = ""
     """Serial number string of the Thorlabs Kinesis polarizer rotation stage."""
@@ -173,6 +175,20 @@ class Config:
     """Path to the per-wavelength exposure settings JSON file for y-polarization."""
     focus_settings_path: str = "focus_settings.json"
     """Path to the per-wavelength focus positions JSON file."""
+
+    # ── Autofocus ─────────────────────────────────────────────────────────────
+    autofocus_enabled: bool = False
+    """When ``True``, ``sample_measurement`` runs a focus scan at the first wavelength of each focus range."""
+    autofocus_range_boundaries: list[float] = field(default_factory=lambda: [440.0, 465.0])
+    """Wavelength boundaries (nm) separating focus regimes (ascending). Creates N+1 ranges."""
+    autofocus_scan_half_range_mm: float = 0.05
+    """Half-width of the position scan around the stored focus target (mm)."""
+    autofocus_step_size_mm: float = 0.002
+    """Motor step size during the autofocus scan (mm)."""
+    autofocus_velocity_mm_s: float = 0.1
+    """Motor velocity during the autofocus scan (mm/s)."""
+    autofocus_num_frames_to_drop: int = 3
+    """Frames to discard at each scan position before capturing the focus image."""
 
     # ─────────────────────────────────────────────────────────────────────────
     # Serialisation helpers
