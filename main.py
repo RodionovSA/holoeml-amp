@@ -13,7 +13,7 @@ if __name__ == "__main__":
     #control.black_measurement()
     #control.reference_measurement()
     control.sample_measurement(xpol=True)
-    control.sample_measurement(xpol=False)
+    #control.sample_measurement(xpol=False)
     # control.reference_measurement(xpol=True)
     # control.reference_measurement(xpol=False)
     # control.black_measurement(xpol=True)
