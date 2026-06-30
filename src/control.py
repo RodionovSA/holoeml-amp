@@ -1,3 +1,4 @@
+import bisect
 from datetime import datetime
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from src.monochromator.mono import MonochromatorControl
 from src.filterwheel import FilterWheelControl
 from src.config import Config, ExposureSettings, FocusSettings
 from src.pythorcam.utils import brightness_calibration as _brightness_calibration
+from src.pythorcam.utils import autofocus as _autofocus
 
 class Control:
     def __init__(self,
@@ -177,6 +179,45 @@ class Control:
 
     def save_focus_settings(self) -> None:
         self.focus_settings.save(self._focus_settings_path)
+
+    def _get_wavelength_range_idx(self, wavelength_nm: float) -> int:
+        """Return the focus-range index for *wavelength_nm*.
+
+        Ranges are defined by ``config.autofocus_range_boundaries`` (ascending nm).
+        Index 0 covers everything below the first boundary; index N covers
+        everything at or above the last boundary.  The boundary wavelength itself
+        belongs to the upper range (bisect_right semantics).
+        """
+        return bisect.bisect_right(self.config.autofocus_range_boundaries, wavelength_nm)
+
+    def _run_autofocus(self, center_position_mm: float) -> float:
+        """Run a focus scan centred on *center_position_mm* and return the best position in mm.
+
+        The camera must already be armed.  Scan range and step size are taken
+        from config.  Motor velocity is set to ``autofocus_velocity_mm_s`` for the
+        scan; the caller is responsible for restoring sweep velocity afterwards.
+        """
+        cfg = self.config
+        _mm = 1e-3
+        start_m = (center_position_mm - cfg.autofocus_scan_half_range_mm) * _mm
+        end_m   = (center_position_mm + cfg.autofocus_scan_half_range_mm) * _mm
+        step_m  = cfg.autofocus_step_size_mm * _mm
+        vel_m   = cfg.autofocus_velocity_mm_s * _mm
+        best_pos_m, _curve, _images = _autofocus(
+            camera_trans=self.camera,
+            focus_motor=self.focus,
+            start_position=start_m,
+            end_position=end_m,
+            step_size=step_m,
+            velocity=vel_m,
+            camera_ref=None,
+            num_frames_to_average=1,
+            num_frames_to_drop=cfg.autofocus_num_frames_to_drop,
+            delay=0,
+        )
+        best_mm = best_pos_m / _mm
+        print(f'[autofocus] best position: {best_mm:.4f} mm')
+        return best_mm
 
     def brightness_calibration(self,
                                override: bool = False,
@@ -463,29 +504,60 @@ class Control:
                     "Run calibration first."
                 )
 
-        if cfg.default_focus_position is None:
-            raise RuntimeError(
-                "default_focus_position must be set in config to use focus_settings offsets."
-            )
+        if cfg.focus_use_current_position:
+            focus_base_mm = self.focus.get_position() * 1e3
+        else:
+            if cfg.default_focus_position is None:
+                raise RuntimeError(
+                    "default_focus_position must be set in config to use focus_settings offsets."
+                )
+            focus_base_mm = cfg.default_focus_position
 
         self.camera.arm()
         time.sleep(0.1)
         images = []
+        range_corrections: dict[int, float] = {}  # range_idx -> position correction (mm)
         try:
             for i, wvl in enumerate(wavelengths):
+                # Set wavelength
                 self.mono.set_wavelength(wvl)
 
+                # Set filterwheel 
                 fw_pos = cfg.longpass_pos if wvl >= cfg.filter_wvl else cfg.filterwheel_empty_pos
                 if self.filterwheel.get_position() != fw_pos:
                     self.filterwheel.set_position(fw_pos)
 
-                target_m = (cfg.default_focus_position + self.focus_settings.offsets[i]) * 1e-3
-                if abs(self.focus.get_position() - target_m) > 5e-6:
+                # Set camera settings
+                self.camera.set_exposure_time_us(int(es.exposure_ms[i] * 1000))
+                self.camera.set_gain(es.gain[i])
+
+                # Set focus position
+                stored_target_mm = focus_base_mm + self.focus_settings.offsets[i]
+                if cfg.autofocus_enabled:
+                    range_idx = self._get_wavelength_range_idx(wvl)
+                    if range_idx not in range_corrections:
+                        # First wavelength in this range: move to stored target then autofocus.
+                        self.focus.move_to(stored_target_mm * 1e-3)
+                        self.focus.wait_move()
+                        best_mm = self._run_autofocus(center_position_mm=stored_target_mm)
+                        range_corrections[range_idx] = best_mm - stored_target_mm
+                        print(f'[autofocus] range {range_idx}  wvl={wvl:.1f} nm  '
+                              f'correction={range_corrections[range_idx]:+.4f} mm')
+                        # Restore sweep velocity after the slow autofocus scan.
+                        _v, _a = cfg.default_focus_max_velocity, cfg.default_focus_acceleration
+                        self.focus.setup_velocity(
+                            max_velocity=(_v * 1e-3 if _v is not None else None),
+                            acceleration=(_a * 1e-3 if _a is not None else None),
+                        )
+                    target_m = (stored_target_mm + range_corrections[range_idx]) * 1e-3
+                else:
+                    target_m = stored_target_mm * 1e-3
+
+                if abs(self.focus.get_position() - target_m) > 2e-6:
                     self.focus.move_to(target_m)
                     self.focus.wait_move()
 
-                self.camera.set_exposure_time_us(int(es.exposure_ms[i] * 1000))
-                self.camera.set_gain(es.gain[i])
+                # Capture image
                 image = self.camera.get_image(
                     num_frames_to_average=cfg.num_frames_to_average,
                     num_frames_to_drop=cfg.num_frames_to_drop,
@@ -494,6 +566,13 @@ class Control:
                 images.append(image)
         finally:
             self.camera.disarm()
+
+        if cfg.autofocus_enabled and range_corrections:
+            for range_idx, correction_mm in range_corrections.items():
+                for j, wvl_j in enumerate(wavelengths):
+                    if self._get_wavelength_range_idx(wvl_j) == range_idx:
+                        self.focus_settings.offsets[j] += correction_mm
+            self.save_focus_settings()
 
         pol_label = {True: 'xpol_', False: 'ypol_', None: ''}[xpol]
         save_dir = Path(cfg.save_dir)
