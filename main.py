@@ -12,10 +12,12 @@ if __name__ == "__main__":
     # Run measurement
     #control.black_measurement()
     #control.reference_measurement()
-    control.reference_measurement(xpol=True)
-    control.reference_measurement(xpol=False)
-    control.black_measurement(xpol=True)
-    control.black_measurement(xpol=False)
+    control.sample_measurement(xpol=True)
+    control.sample_measurement(xpol=False)
+    # control.reference_measurement(xpol=True)
+    # control.reference_measurement(xpol=False)
+    # control.black_measurement(xpol=True)
+    # control.black_measurement(xpol=False)
     
     # Return to the default state
     control.go_to_default_state()
